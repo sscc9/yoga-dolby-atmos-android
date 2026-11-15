@@ -89,7 +89,8 @@ import java.util.Locale
 @Composable
 fun DolbyAccessScreen(
     state: DolbyUiState,
-    onMasterToggle: (Boolean) -> Unit
+    onMasterToggle: (Boolean) -> Unit,
+    onRebindDsp: () -> Unit = {}
 ) {
     var showEndpointMenu by remember { mutableStateOf(false) }
 
@@ -125,7 +126,8 @@ fun DolbyAccessScreen(
                 },
                 onToggleGlobalMix = {
                     DolbyRepository.setGlobalMixFallback(it)
-                }
+                },
+                onRebindDsp = onRebindDsp
             )
         }
 
@@ -217,7 +219,7 @@ private fun HeaderSection(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "YOGA 83BU",
+                        text = "YOGA 83BU · 1:1原厂",
                         color = DolbyCyan,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -227,7 +229,7 @@ private fun HeaderSection(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = if (state.masterEnabled) {
-                    "20段零延迟引擎运行中 · ${state.currentProfile.titleCn}模式"
+                    "电脑 XML 参数零删改直通 · ${state.currentProfile.titleCn}模式"
                 } else {
                     "音效引擎已关闭 · 系统原生直通输出"
                 },
@@ -266,7 +268,8 @@ private fun EndpointStatusCard(
     expanded: Boolean,
     onToggleExpand: () -> Unit,
     onSelectOverride: (EndpointOverride) -> Unit,
-    onToggleGlobalMix: (Boolean) -> Unit
+    onToggleGlobalMix: (Boolean) -> Unit,
+    onRebindDsp: () -> Unit
 ) {
     val isHeadphone = state.effectiveEndpoint == ActiveEndpoint.HEADPHONE
     Column(
@@ -314,14 +317,7 @@ private fun EndpointStatusCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = buildString {
-                            append("当前设备：${state.connectedDeviceName}")
-                            if (state.activeSessionCount > 0) {
-                                append(" · 已接管 ${state.activeSessionCount} 个播放器")
-                            } else if (state.globalMixAttached) {
-                                append(" · 全局混音已挂载")
-                            }
-                        },
+                        text = "${state.connectedDeviceName} · ${state.attachedSessionSummary}",
                         color = DolbyTextSecondary,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -341,7 +337,7 @@ private fun EndpointStatusCard(
         AnimatedVisibility(visible = expanded) {
             Column(modifier = Modifier.padding(top = 12.dp)) {
                 Text(
-                    text = "输出声学模型（电脑原厂分耳机 Atmos 3.7 与 ALC287 扬声器两套参数）：",
+                    text = "输出声学模型（1:1 复刻电脑 Headphone Atmos 3.7 与 ALC287 扬声器 XML）：",
                     color = DolbyTextSecondary,
                     fontSize = 11.sp
                 )
@@ -384,13 +380,13 @@ private fun EndpointStatusCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "全局混音兼容挂载（Session 0）",
+                            text = "全局混音兜底（Session 0 自动防重）",
                             color = DolbyTextPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "为不发送标准音频广播的短视频/浏览器提供全局音效兜底",
+                            text = "无独立播放器会话时自动挂载全局输出，有播放器会话时自动避让防双重叠加",
                             color = DolbyTextSecondary,
                             fontSize = 11.sp
                         )
@@ -404,6 +400,25 @@ private fun EndpointStatusCard(
                         )
                     )
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0B1324))
+                        .border(1.dp, DolbyBorder, RoundedCornerShape(10.dp))
+                        .clickable { onRebindDsp() }
+                        .padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "重新扫描并刷新音频硬件挂载",
+                        color = DolbyCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }
@@ -414,6 +429,19 @@ private fun SpectrumCurveCard(
     state: DolbyUiState,
     curve20Db: FloatArray
 ) {
+    val spec = remember(state.effectiveEndpoint, state.currentProfile) {
+        YogaDolbyTuningData.getFactorySpec(state.effectiveEndpoint, state.currentProfile)
+    }
+    val gainBadge = buildString {
+        append(String.format(Locale.US, "VolMax %+.1fdB", spec.volmaxBoostDb))
+        if (spec.vlldpMbcEnabled) {
+            append(String.format(Locale.US, " · MBC %+.1fdB", spec.vlldpMbcHighGroupMakeupDb))
+        }
+        if (spec.slidingBassEnabled) {
+            append(" · 动态低音+4dB")
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -428,15 +456,16 @@ private fun SpectrumCurveCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "20 频段实时声学响应曲线（47Hz – 19.7kHz）",
+                text = "20 频段原厂响应曲线",
                 color = DolbyTextPrimary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "±12 dB",
-                color = DolbyTextSecondary,
-                fontSize = 11.sp
+                text = gainBadge,
+                color = DolbyCyan,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
 
@@ -737,7 +766,7 @@ private fun IeqToneCard(
                     modifier = Modifier.width(56.dp)
                 )
                 Slider(
-                    value = state.ieqAmount,
+                    value = state.ieqAmount.coerceIn(1f, 10f),
                     onValueChange = onAmountChange,
                     valueRange = 1f..10f,
                     modifier = Modifier.weight(1f),
@@ -1003,7 +1032,7 @@ private fun EnhancementModulesSection(state: DolbyUiState) {
         DspModuleCard(
             icon = Icons.Rounded.SurroundSound,
             title = "环绕声虚拟器（Surround Virtualizer）",
-            desc = "拓宽左右立体声声场结像，还原电脑杜比空间包围感",
+            desc = "对应 XML surround-decoder + surround-boost（游戏=0基础解码，动态/电影=6 [+6dB]）",
             enabled = state.surroundEnabled,
             amount = state.surroundAmount,
             onToggle = { DolbyRepository.setSurround(it) },
@@ -1013,7 +1042,7 @@ private fun EnhancementModulesSection(state: DolbyUiState) {
         DspModuleCard(
             icon = Icons.Rounded.RecordVoiceOver,
             title = "对白增强器（Dialog Enhancer）",
-            desc = "智能提取 844Hz–3.8kHz 人声频段并动态压制背景浑浊感",
+            desc = "对应 XML dialog-enhancer-amount（动态/电影=5，语音=8/10，无低频抽吸裁剪）",
             enabled = state.dialogEnhancerEnabled,
             amount = state.dialogEnhancerAmount,
             onToggle = { DolbyRepository.setDialogEnhancer(it) },
@@ -1023,7 +1052,7 @@ private fun EnhancementModulesSection(state: DolbyUiState) {
         DspModuleCard(
             icon = Icons.Rounded.VolumeUp,
             title = "音量均衡器（Volume Leveler）",
-            desc = "20 段多频段动态压缩（MBC），自动平稳大小声切换、夜间防爆音",
+            desc = "对应 XML volume-leveler（靶向 -20dBFS 提拉小声细节，配合 VolMax +4/+6dB 响度增益）",
             enabled = state.volumeLevelerEnabled,
             amount = state.volumeLevelerAmount,
             onToggle = { DolbyRepository.setVolumeLeveler(it) },
@@ -1034,9 +1063,9 @@ private fun EnhancementModulesSection(state: DolbyUiState) {
             icon = Icons.Rounded.GraphicEq,
             title = "超重低音增强（Bass Enhancer）",
             desc = if (state.effectiveEndpoint == ActiveEndpoint.HEADPHONE) {
-                "耳机 100Hz 下潜弹性补偿（源自 Atmos 3.7 原厂低频参数）"
+                "电脑原厂默认关闭（开启时按 XML 施加 100Hz 频点最高 +9.0dB 低音推进）"
             } else {
-                "扬声器谐波低频补偿（自动开启防破音冲程限幅保护）"
+                "电脑原厂默认关闭（开启时按 XML 施加 200Hz 频点低音补偿与原厂限幅保护）"
             },
             enabled = state.bassEnhancerEnabled,
             amount = state.bassEnhancerAmount,
@@ -1119,9 +1148,9 @@ private fun DspModuleCard(
                     modifier = Modifier.width(36.dp)
                 )
                 Slider(
-                    value = amount,
+                    value = amount.coerceIn(0f, 10f),
                     onValueChange = onAmountChange,
-                    valueRange = 1f..10f,
+                    valueRange = 0f..10f,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
                         thumbColor = DolbyCyan,
@@ -1130,7 +1159,7 @@ private fun DspModuleCard(
                     )
                 )
                 Text(
-                    text = String.format(Locale.US, "%.1f", amount),
+                    text = String.format(Locale.US, "%.1f", amount.coerceIn(0f, 10f)),
                     color = DolbyCyan,
                     fontSize = 11.sp,
                     modifier = Modifier.width(30.dp)

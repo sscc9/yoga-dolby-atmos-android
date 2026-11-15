@@ -2,10 +2,12 @@ package com.yoga.dolbyatmos.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.yoga.dolbyatmos.model.ActiveEndpoint
 import com.yoga.dolbyatmos.model.DolbyProfile
 import com.yoga.dolbyatmos.model.DolbyUiState
 import com.yoga.dolbyatmos.model.EndpointOverride
 import com.yoga.dolbyatmos.model.IeqPreset
+import com.yoga.dolbyatmos.model.YogaDolbyTuningData
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,7 +15,8 @@ import kotlinx.coroutines.flow.update
 
 object DolbyRepository {
 
-    private const val PREFS_NAME = "yoga_dolby_atmos_prefs"
+    // New v2 namespace ensures 100% verbatim PC XML factory defaults without stale v1.0.0 cache
+    private const val PREFS_NAME = "yoga_dolby_atmos_prefs_v2_raw_pc"
     private var prefs: SharedPreferences? = null
 
     private val _state = MutableStateFlow(DolbyUiState())
@@ -23,35 +26,61 @@ object DolbyRepository {
     private val _activeSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val activeSessions: StateFlow<Map<Int, String>> = _activeSessions.asStateFlow()
 
+    private fun keyPrefix(endpoint: ActiveEndpoint, profile: DolbyProfile): String {
+        return "${endpoint.name}_${profile.id}"
+    }
+
     @Synchronized
     fun init(context: Context) {
         if (prefs != null) return
         val sp = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = sp
 
-        val profile = DolbyProfile.fromId(sp.getString("profile", DolbyProfile.DYNAMIC.id) ?: "dynamic")
-        val slot0 = loadBands(sp, "slot_0", listOf(3.5f, 4.0f, 2.0f, -0.5f, -1.0f, 0.0f, 1.5f, 3.0f, 3.5f, 2.5f))
-        val slot1 = loadBands(sp, "slot_1", listOf(-1.5f, -0.5f, 0.5f, 1.5f, 2.5f, 3.5f, 3.0f, 1.5f, 1.0f, 0.5f))
-        val slot2 = loadBands(sp, "slot_2", listOf(5.5f, 5.0f, 2.5f, 0.5f, 0.0f, 1.0f, 2.0f, 2.5f, 2.0f, 1.5f))
+        val profile = DolbyProfile.fromId(sp.getString("profile", DolbyProfile.DYNAMIC.id) ?: DolbyProfile.DYNAMIC.id)
+        val override = EndpointOverride.fromId(sp.getString("endpoint_override", EndpointOverride.AUTO.id) ?: EndpointOverride.AUTO.id)
+        val initialEndpoint = when (override) {
+            EndpointOverride.FORCE_HEADPHONE -> ActiveEndpoint.HEADPHONE
+            EndpointOverride.FORCE_SPEAKER -> ActiveEndpoint.SPEAKER
+            EndpointOverride.AUTO -> ActiveEndpoint.SPEAKER
+        }
 
-        _state.value = DolbyUiState(
+        val flat10 = List(10) { 0f }
+        val slot0 = loadBands(sp, "slot_0", flat10)
+        val slot1 = loadBands(sp, "slot_1", flat10)
+        val slot2 = loadBands(sp, "slot_2", flat10)
+
+        val baseState = DolbyUiState(
             masterEnabled = sp.getBoolean("master_enabled", true),
             globalMixFallback = sp.getBoolean("global_mix_fallback", true),
-            endpointOverride = EndpointOverride.fromId(sp.getString("endpoint_override", "auto") ?: "auto"),
+            endpointOverride = override,
             currentProfile = profile,
-            ieqPreset = IeqPreset.fromId(sp.getString("ieq_${profile.id}", profile.defaultIeq.id) ?: profile.defaultIeq.id),
-            ieqAmount = sp.getFloat("ieq_amt_${profile.id}", profile.defaultIeqAmount),
-            surroundEnabled = sp.getBoolean("surr_en_${profile.id}", profile.defaultSurroundEnabled),
-            surroundAmount = sp.getFloat("surr_amt_${profile.id}", profile.defaultSurroundAmount),
-            dialogEnhancerEnabled = sp.getBoolean("de_en_${profile.id}", profile.defaultDialogEnabled),
-            dialogEnhancerAmount = sp.getFloat("de_amt_${profile.id}", profile.defaultDialogAmount),
-            volumeLevelerEnabled = sp.getBoolean("vl_en_${profile.id}", profile.defaultVolumeLeveler),
-            volumeLevelerAmount = sp.getFloat("vl_amt_${profile.id}", profile.defaultVolumeLevelerAmount),
-            bassEnhancerEnabled = sp.getBoolean("bass_en_${profile.id}", profile.defaultBassEnabled),
-            bassEnhancerAmount = sp.getFloat("bass_amt_${profile.id}", profile.defaultBassAmount),
             customSlotIndex = sp.getInt("custom_slot_idx", 0).coerceIn(0, 2),
             customEqEnabledInPreset = sp.getBoolean("custom_eq_in_preset", false),
             customSlots = listOf(slot0, slot1, slot2)
+        )
+        _state.value = applyResolvedParams(baseState, initialEndpoint, profile, sp)
+    }
+
+    private fun applyResolvedParams(
+        base: DolbyUiState,
+        endpoint: ActiveEndpoint,
+        profile: DolbyProfile,
+        sp: SharedPreferences?
+    ): DolbyUiState {
+        val spec = YogaDolbyTuningData.getFactorySpec(endpoint, profile)
+        val kp = keyPrefix(endpoint, profile)
+        return base.copy(
+            currentProfile = profile,
+            ieqPreset = sp?.getString("ieq_$kp", null)?.let { IeqPreset.fromId(it) } ?: spec.ieqPreset,
+            ieqAmount = sp?.getFloat("ieq_amt_$kp", spec.ieqAmount) ?: spec.ieqAmount,
+            surroundEnabled = sp?.getBoolean("surr_en_$kp", spec.surroundEnabled) ?: spec.surroundEnabled,
+            surroundAmount = sp?.getFloat("surr_amt_$kp", spec.surroundAmount) ?: spec.surroundAmount,
+            dialogEnhancerEnabled = sp?.getBoolean("de_en_$kp", spec.dialogEnabled) ?: spec.dialogEnabled,
+            dialogEnhancerAmount = sp?.getFloat("de_amt_$kp", spec.dialogAmount) ?: spec.dialogAmount,
+            volumeLevelerEnabled = sp?.getBoolean("vl_en_$kp", spec.volumeLevelerEnabled) ?: spec.volumeLevelerEnabled,
+            volumeLevelerAmount = sp?.getFloat("vl_amt_$kp", spec.volumeLevelerAmount) ?: spec.volumeLevelerAmount,
+            bassEnhancerEnabled = sp?.getBoolean("bass_en_$kp", spec.bassEnabled) ?: spec.bassEnabled,
+            bassEnhancerAmount = sp?.getFloat("bass_amt_$kp", spec.bassAmount) ?: spec.bassAmount
         )
     }
 
@@ -59,7 +88,7 @@ object DolbyRepository {
         if (sessionId <= 0) return
         _activeSessions.update { current ->
             val updated = current.toMutableMap()
-            updated[sessionId] = packageName.ifBlank { "media_player" }
+            updated[sessionId] = packageName.ifBlank { "播放器" }
             updated
         }
         _state.update { it.copy(activeSessionCount = _activeSessions.value.size) }
@@ -79,15 +108,24 @@ object DolbyRepository {
         detectedHeadphone: Boolean,
         deviceName: String,
         globalMixAttached: Boolean,
-        sessionCount: Int
+        sessionCount: Int,
+        sessionSummary: String
     ) {
-        _state.update {
-            it.copy(
+        _state.update { prev ->
+            val prevEndpoint = prev.effectiveEndpoint
+            val updatedHw = prev.copy(
                 detectedHeadphone = detectedHeadphone,
                 connectedDeviceName = deviceName,
                 globalMixAttached = globalMixAttached,
-                activeSessionCount = sessionCount
+                activeSessionCount = sessionCount,
+                attachedSessionSummary = sessionSummary
             )
+            val newEndpoint = updatedHw.effectiveEndpoint
+            if (newEndpoint != prevEndpoint) {
+                applyResolvedParams(updatedHw, newEndpoint, updatedHw.currentProfile, prefs)
+            } else {
+                updatedHw
+            }
         }
     }
 
@@ -103,98 +141,83 @@ object DolbyRepository {
 
     fun setEndpointOverride(override: EndpointOverride) {
         prefs?.edit()?.putString("endpoint_override", override.id)?.apply()
-        _state.update { it.copy(endpointOverride = override) }
+        _state.update { prev ->
+            val next = prev.copy(endpointOverride = override)
+            applyResolvedParams(next, next.effectiveEndpoint, next.currentProfile, prefs)
+        }
     }
 
     fun selectProfile(profile: DolbyProfile) {
-        val sp = prefs
-        val ieq = sp?.getString("ieq_${profile.id}", null)?.let { IeqPreset.fromId(it) } ?: profile.defaultIeq
-        val ieqAmt = sp?.getFloat("ieq_amt_${profile.id}", profile.defaultIeqAmount) ?: profile.defaultIeqAmount
-        val surrEn = sp?.getBoolean("surr_en_${profile.id}", profile.defaultSurroundEnabled) ?: profile.defaultSurroundEnabled
-        val surrAmt = sp?.getFloat("surr_amt_${profile.id}", profile.defaultSurroundAmount) ?: profile.defaultSurroundAmount
-        val deEn = sp?.getBoolean("de_en_${profile.id}", profile.defaultDialogEnabled) ?: profile.defaultDialogEnabled
-        val deAmt = sp?.getFloat("de_amt_${profile.id}", profile.defaultDialogAmount) ?: profile.defaultDialogAmount
-        val vlEn = sp?.getBoolean("vl_en_${profile.id}", profile.defaultVolumeLeveler) ?: profile.defaultVolumeLeveler
-        val vlAmt = sp?.getFloat("vl_amt_${profile.id}", profile.defaultVolumeLevelerAmount) ?: profile.defaultVolumeLevelerAmount
-        val bassEn = sp?.getBoolean("bass_en_${profile.id}", profile.defaultBassEnabled) ?: profile.defaultBassEnabled
-        val bassAmt = sp?.getFloat("bass_amt_${profile.id}", profile.defaultBassAmount) ?: profile.defaultBassAmount
-
-        sp?.edit()?.putString("profile", profile.id)?.apply()
-        _state.update {
-            it.copy(
-                currentProfile = profile,
-                ieqPreset = ieq,
-                ieqAmount = ieqAmt,
-                surroundEnabled = surrEn,
-                surroundAmount = surrAmt,
-                dialogEnhancerEnabled = deEn,
-                dialogEnhancerAmount = deAmt,
-                volumeLevelerEnabled = vlEn,
-                volumeLevelerAmount = vlAmt,
-                bassEnhancerEnabled = bassEn,
-                bassEnhancerAmount = bassAmt
-            )
+        prefs?.edit()?.putString("profile", profile.id)?.apply()
+        _state.update { prev ->
+            applyResolvedParams(prev, prev.effectiveEndpoint, profile, prefs)
         }
     }
 
     fun resetCurrentProfileToFactory() {
-        val p = _state.value.currentProfile
+        val current = _state.value
+        val kp = keyPrefix(current.effectiveEndpoint, current.currentProfile)
         prefs?.edit()?.apply {
-            remove("ieq_${p.id}")
-            remove("ieq_amt_${p.id}")
-            remove("surr_en_${p.id}")
-            remove("surr_amt_${p.id}")
-            remove("de_en_${p.id}")
-            remove("de_amt_${p.id}")
-            remove("vl_en_${p.id}")
-            remove("vl_amt_${p.id}")
-            remove("bass_en_${p.id}")
-            remove("bass_amt_${p.id}")
+            remove("ieq_$kp")
+            remove("ieq_amt_$kp")
+            remove("surr_en_$kp")
+            remove("surr_amt_$kp")
+            remove("de_en_$kp")
+            remove("de_amt_$kp")
+            remove("vl_en_$kp")
+            remove("vl_amt_$kp")
+            remove("bass_en_$kp")
+            remove("bass_amt_$kp")
         }?.apply()
-        selectProfile(p)
+        selectProfile(current.currentProfile)
     }
 
     fun setIeq(preset: IeqPreset, amount: Float = _state.value.ieqAmount) {
-        val p = _state.value.currentProfile
+        val current = _state.value
+        val kp = keyPrefix(current.effectiveEndpoint, current.currentProfile)
         prefs?.edit()
-            ?.putString("ieq_${p.id}", preset.id)
-            ?.putFloat("ieq_amt_${p.id}", amount)
+            ?.putString("ieq_$kp", preset.id)
+            ?.putFloat("ieq_amt_$kp", amount)
             ?.apply()
         _state.update { it.copy(ieqPreset = preset, ieqAmount = amount) }
     }
 
     fun setSurround(enabled: Boolean, amount: Float = _state.value.surroundAmount) {
-        val p = _state.value.currentProfile
+        val current = _state.value
+        val kp = keyPrefix(current.effectiveEndpoint, current.currentProfile)
         prefs?.edit()
-            ?.putBoolean("surr_en_${p.id}", enabled)
-            ?.putFloat("surr_amt_${p.id}", amount)
+            ?.putBoolean("surr_en_$kp", enabled)
+            ?.putFloat("surr_amt_$kp", amount)
             ?.apply()
         _state.update { it.copy(surroundEnabled = enabled, surroundAmount = amount) }
     }
 
     fun setDialogEnhancer(enabled: Boolean, amount: Float = _state.value.dialogEnhancerAmount) {
-        val p = _state.value.currentProfile
+        val current = _state.value
+        val kp = keyPrefix(current.effectiveEndpoint, current.currentProfile)
         prefs?.edit()
-            ?.putBoolean("de_en_${p.id}", enabled)
-            ?.putFloat("de_amt_${p.id}", amount)
+            ?.putBoolean("de_en_$kp", enabled)
+            ?.putFloat("de_amt_$kp", amount)
             ?.apply()
         _state.update { it.copy(dialogEnhancerEnabled = enabled, dialogEnhancerAmount = amount) }
     }
 
     fun setVolumeLeveler(enabled: Boolean, amount: Float = _state.value.volumeLevelerAmount) {
-        val p = _state.value.currentProfile
+        val current = _state.value
+        val kp = keyPrefix(current.effectiveEndpoint, current.currentProfile)
         prefs?.edit()
-            ?.putBoolean("vl_en_${p.id}", enabled)
-            ?.putFloat("vl_amt_${p.id}", amount)
+            ?.putBoolean("vl_en_$kp", enabled)
+            ?.putFloat("vl_amt_$kp", amount)
             ?.apply()
         _state.update { it.copy(volumeLevelerEnabled = enabled, volumeLevelerAmount = amount) }
     }
 
     fun setBassEnhancer(enabled: Boolean, amount: Float = _state.value.bassEnhancerAmount) {
-        val p = _state.value.currentProfile
+        val current = _state.value
+        val kp = keyPrefix(current.effectiveEndpoint, current.currentProfile)
         prefs?.edit()
-            ?.putBoolean("bass_en_${p.id}", enabled)
-            ?.putFloat("bass_amt_${p.id}", amount)
+            ?.putBoolean("bass_en_$kp", enabled)
+            ?.putFloat("bass_amt_$kp", amount)
             ?.apply()
         _state.update { it.copy(bassEnhancerEnabled = enabled, bassEnhancerAmount = amount) }
     }

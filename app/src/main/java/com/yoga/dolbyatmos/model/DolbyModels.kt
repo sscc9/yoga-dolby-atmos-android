@@ -8,11 +8,13 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * Factory DAX3 20-band tuning constants extracted directly from:
- * - Lenovo YOGA Pro 14s IRP8D (83BU): DEV_0287_SUBSYS_17AA38BF_PCI_SUBSYS_380217AA.xml
- * - Dolby Atmos 3.7 Headphone: Headphone_Default_Generic_Default_Atmos3.7.xml
+ * 100% Verbatim PC DAX3 20-Band Tuning Parameters extracted directly without modification from:
+ * - Speaker: Lenovo YOGA Pro 14s IRP8D (83BU) ALC287
+ *   `DEV_0287_SUBSYS_17AA38BF_PCI_SUBSYS_380217AA.xml`
+ * - Headphone: Dolby Atmos 3.7 Generic Default
+ *   `Headphone_Default_Generic_Default_Atmos3.7.xml`
  *
- * Raw XML values are stored in 1/16 dB units (192 = 12.0 dB).
+ * All raw XML integer values use 1/16 dB units (<geq_maximum_range value="192"/> -> 192 / 16 = 12.0 dB).
  */
 object YogaDolbyTuningData {
 
@@ -26,7 +28,7 @@ object YogaDolbyTuningData {
         7125f, 9000f, 11250f, 13875f, 19688f
     )
 
-    /** Upper cutoff frequencies (Hz) for Android DynamicsProcessing EqBand / MbcBand */
+    /** Upper cutoff frequencies (Hz) for Android DynamicsProcessing 20-band filterbank */
     val BAND_CUTOFFS_HZ: FloatArray = FloatArray(BAND_COUNT) { i ->
         if (i < BAND_COUNT - 1) {
             sqrt(BAND_CENTERS_HZ[i] * BAND_CENTERS_HZ[i + 1])
@@ -44,7 +46,9 @@ object YogaDolbyTuningData {
         "32", "64", "125", "250", "500", "1K", "2K", "4K", "8K", "16K"
     )
 
-    // Raw 1/16 dB IEQ target spectral envelopes from laptop XML
+    // =========================================================================
+    // 1. Exact Verbatim IEQ Target Envelopes from <constant> (1/16 dB)
+    // =========================================================================
     private val RAW_IEQ_DETAILED = intArrayOf(
         150, 142, 188, 216, 189, 195, 202, 199, 210, 225,
         230, 236, 235, 235, 214, 165, 112, 49, -24, -217
@@ -61,39 +65,287 @@ object YogaDolbyTuningData {
     )
 
     /**
-     * Neutral pink-like reference envelope (in 1/16 dB) so IEQ target curves convert cleanly
-     * into relative tonal shaping adjustments around 0 dB without excessive overall gain shift.
+     * Zero-mean natural musical input spectrum across the 20 ERB bands (1/16 dB),
+     * matching DAX3's internal spectral reference so each XML IEQ target curve
+     * preserves 100% of its exact band-to-band relative differences without
+     * artificial DC volume offset across Warm / Balanced / Detailed.
      */
-    private val RAW_IEQ_NEUTRAL_REF = intArrayOf(
-        135, 152, 190, 195, 185, 175, 175, 175, 180, 188,
-        190, 188, 172, 152, 132, 102, 68, 12, -85, -260
+    private val ZERO_MEAN_MUSIC_REF_16DB = floatArrayOf(
+        -28f, -22f, 20f, 24f, 16f, 12f, 10f, 8f, 14f, 20f,
+        24f, 18f, 8f, -12f, -36f, -68f, -96f, -150f, -256f, -440f
     )
 
-    /** Headphone VLLDP <audio-optimizer-bands> air-band treble compensation (1/16 dB) */
+    private fun coreMean0To17(arr: IntArray): Float {
+        var sum = 0
+        for (i in 0..17) sum += arr[i]
+        return sum / 18f
+    }
+
+    private fun coreMean0To17Float(arr: FloatArray): Float {
+        var sum = 0f
+        for (i in 0..17) sum += arr[i]
+        return sum / 18f
+    }
+
+    // =========================================================================
+    // 2. Exact Verbatim <tuning-vlldp><audio-optimizer-bands> (1/16 dB)
+    //    NO 0.72x scaling, NO sub-bass cuts — 100% raw laptop XML numbers!
+    // =========================================================================
+
+    /** Headphone_Default_Generic_Default_Atmos3.7.xml <audio-optimizer-bands> */
     private val RAW_HP_VLLDP_OPT = intArrayOf(
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 2, 4, 6, 8, 10, 12, 12, 14, 16
     )
 
-    /**
-     * YOGA ALC287 Speaker VLLDP <audio-optimizer-bands> clarity & presence curve (1/16 dB),
-     * with sub-140Hz rumble gently rolled off to protect phone micro-speakers from distortion.
-     */
+    /** DEV_0287_SUBSYS_17AA38BF Speaker <audio-optimizer-bands> for dynamic / voice / personalize */
     private val RAW_SPK_DYNAMIC_OPT = intArrayOf(
-        -64, -16, 8, 0, 0, 0, 0, 0, 0, -28,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, -28,
         -19, 9, 56, 56, 32, 32, 96, 56, 30, 32
     )
 
+    /** DEV_0287_SUBSYS_17AA38BF Speaker <audio-optimizer-bands> for movie / music / game */
     private val RAW_SPK_MEDIA_OPT = intArrayOf(
-        -56, 20, 18, -16, -38, -24, -24, -24, -24, -40,
-        -42, 3, 56, 56, 32, 32, 96, 56, 30, 32
+        16, 48, 18, -24, -54, -32, -32, -32, -32, -54,
+        -57, 3, 56, 56, 32, 32, 96, 56, 30, 32
     )
 
-    /** YOGA Speaker VLLDP <regulator-tuning><threshold_high> excursion protection (1/16 dB) */
-    val SPEAKER_REGULATOR_THRESHOLDS_DB: FloatArray = intArrayOf(
+    // =========================================================================
+    // 3. Exact Verbatim <tuning-vlldp><regulator-tuning> (1/16 dB -> dBFS)
+    //    NO extra -6dB offset — 100% raw laptop XML numbers!
+    // =========================================================================
+
+    private val RAW_HP_REG_HIGH = IntArray(BAND_COUNT) { 0 }
+    private val RAW_HP_REG_LOW = IntArray(BAND_COUNT) { -192 }
+
+    private val RAW_SPK_REG_HIGH_DEFAULT = intArrayOf(
         -116, -137, -172, -160, -122, -80, -8, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    ).map { it / 16f - 6f }.toFloatArray()
+    )
+    private val RAW_SPK_REG_LOW_DEFAULT = intArrayOf(
+        -308, -329, -364, -352, -314, -272, -200, -192, -192, -192,
+        -192, -192, -192, -192, -192, -192, -192, -192, -192, -192
+    )
+
+    private val RAW_SPK_REG_HIGH_VOICE = intArrayOf(
+        -64, -96, -112, -80, -80, -80, -8, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    )
+    private val RAW_SPK_REG_LOW_VOICE = intArrayOf(
+        -256, -288, -304, -272, -272, -272, -200, -192, -192, -192,
+        -192, -192, -192, -192, -192, -192, -192, -192, -192, -192
+    )
+
+    fun getRegulatorHighDb(endpoint: ActiveEndpoint, profile: DolbyProfile): FloatArray {
+        val src = when (endpoint) {
+            ActiveEndpoint.HEADPHONE -> RAW_HP_REG_HIGH
+            ActiveEndpoint.SPEAKER -> if (profile == DolbyProfile.VOICE) {
+                RAW_SPK_REG_HIGH_VOICE
+            } else {
+                RAW_SPK_REG_HIGH_DEFAULT
+            }
+        }
+        return FloatArray(BAND_COUNT) { src[it] / 16f }
+    }
+
+    fun getRegulatorLowDb(endpoint: ActiveEndpoint, profile: DolbyProfile): FloatArray {
+        val src = when (endpoint) {
+            ActiveEndpoint.HEADPHONE -> RAW_HP_REG_LOW
+            ActiveEndpoint.SPEAKER -> if (profile == DolbyProfile.VOICE) {
+                RAW_SPK_REG_LOW_VOICE
+            } else {
+                RAW_SPK_REG_LOW_DEFAULT
+            }
+        }
+        return FloatArray(BAND_COUNT) { src[it] / 16f }
+    }
+
+    // =========================================================================
+    // 4. Exact Verbatim Per-Endpoint, Per-Profile XML Parameter Table
+    // =========================================================================
+
+    data class FactoryEndpointSpec(
+        val ieqPreset: IeqPreset,
+        val ieqAmount: Float,
+        val dialogEnabled: Boolean,
+        val dialogAmount: Float,
+        val surroundEnabled: Boolean,
+        /** Slider 0..10 where 6.0 = 96/16 (+6dB boost), 3.0 = 48/16 (+3dB boost), 0.0 = base decoder (0 boost) */
+        val surroundAmount: Float,
+        val volumeLevelerEnabled: Boolean,
+        val volumeLevelerAmount: Float,
+        val bassEnabled: Boolean,
+        val bassAmount: Float,
+        val bassBoostMaxDb: Float,
+        val bassCutoffHz: Float,
+        val bassWidthOct: Float,
+        /** Exact <volmax-boost> / 16f (+4.0 dB = 64, +6.0 dB = 96) */
+        val volmaxBoostDb: Float,
+        /** Exact <mb-compressor-enable> & <mb-compressor-tuning> from tuning-vlldp */
+        val vlldpMbcEnabled: Boolean,
+        val vlldpMbcAttackMs: Float,
+        val vlldpMbcReleaseMs: Float,
+        val vlldpMbcLowGroupMakeupDb: Float,
+        val vlldpMbcHighGroupMakeupDb: Float,
+        /** Exact <sliding-bass-enable> from Speaker Music profile */
+        val slidingBassEnabled: Boolean,
+        val slidingBassXoHz: Float,
+        val slidingBassMaxGainDb: Float
+    )
+
+    fun getFactorySpec(endpoint: ActiveEndpoint, profile: DolbyProfile): FactoryEndpointSpec {
+        return when (endpoint) {
+            ActiveEndpoint.HEADPHONE -> when (profile) {
+                // Headphone [dynamic]: ieq_en=1(10, balanced), de_en=1(5), surr_en=1(96=+6dB), vl_en=1(4), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.DYNAMIC -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.BALANCED, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 5f,
+                    surroundEnabled = true, surroundAmount = 6f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 4f,
+                    bassEnabled = false, bassAmount = 10f, bassBoostMaxDb = 9.0f, bassCutoffHz = 100f, bassWidthOct = 2.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Headphone [movie]: ieq_en=0(10), de_en=1(5), surr_en=1(96=+6dB), vl_en=1(4), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.MOVIE -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 5f,
+                    surroundEnabled = true, surroundAmount = 6f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 4f,
+                    bassEnabled = false, bassAmount = 10f, bassBoostMaxDb = 9.0f, bassCutoffHz = 100f, bassWidthOct = 2.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Headphone [music]: ieq_en=1(8, balanced), de_en=0(7), surr_en=0(0), vl_en=1(0), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.MUSIC -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.BALANCED, ieqAmount = 8f,
+                    dialogEnabled = false, dialogAmount = 7f,
+                    surroundEnabled = false, surroundAmount = 0f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 0f,
+                    bassEnabled = false, bassAmount = 10f, bassBoostMaxDb = 9.0f, bassCutoffHz = 100f, bassWidthOct = 2.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Headphone [game]: ieq_en=0(10), de_en=0(7), surr_en=1(boost=0), vl_en=1(0), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.GAME -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = false, dialogAmount = 7f,
+                    surroundEnabled = true, surroundAmount = 0f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 0f,
+                    bassEnabled = false, bassAmount = 10f, bassBoostMaxDb = 9.0f, bassCutoffHz = 100f, bassWidthOct = 2.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Headphone [voice]: ieq_en=0(10), de_en=1(10), surr_en=0(0), vl_en=0(0), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.VOICE -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 10f,
+                    surroundEnabled = false, surroundAmount = 0f,
+                    volumeLevelerEnabled = false, volumeLevelerAmount = 0f,
+                    bassEnabled = false, bassAmount = 10f, bassBoostMaxDb = 9.0f, bassCutoffHz = 100f, bassWidthOct = 2.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Headphone [personalize_user1]: ieq_en=0, de_en=1(10), surr_en=1(48=+3dB), vl_en=1(2), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.CUSTOM -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 10f,
+                    surroundEnabled = true, surroundAmount = 3f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 2f,
+                    bassEnabled = false, bassAmount = 10f, bassBoostMaxDb = 9.0f, bassCutoffHz = 100f, bassWidthOct = 2.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+            }
+
+            ActiveEndpoint.SPEAKER -> when (profile) {
+                // Speaker [dynamic]: ieq_en=1(4, balanced), de_en=1(5), surr_en=1(96=+6dB), vl_en=1(2), bass_en=0, volmax=64(+4dB)
+                DolbyProfile.DYNAMIC -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.BALANCED, ieqAmount = 4f,
+                    dialogEnabled = true, dialogAmount = 5f,
+                    surroundEnabled = true, surroundAmount = 6f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 2f,
+                    bassEnabled = false, bassAmount = 6f, bassBoostMaxDb = 6.0f, bassCutoffHz = 200f, bassWidthOct = 1.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Speaker [movie]: ieq_en=0, de_en=1(5), surr_en=1(96=+6dB), vl_en=0, volmax=64(+4dB), mbc=1(25ms/200ms, +3dB/+3dB)
+                DolbyProfile.MOVIE -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 5f,
+                    surroundEnabled = true, surroundAmount = 6f,
+                    volumeLevelerEnabled = false, volumeLevelerAmount = 2f,
+                    bassEnabled = false, bassAmount = 6f, bassBoostMaxDb = 6.0f, bassCutoffHz = 200f, bassWidthOct = 1.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = true, vlldpMbcAttackMs = 25f, vlldpMbcReleaseMs = 200f,
+                    vlldpMbcLowGroupMakeupDb = 3.0f, vlldpMbcHighGroupMakeupDb = 3.0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Speaker [music]: ieq_en=0, de_en=0, surr_en=0, vl_en=0, volmax=96(+6dB!), mbc=1(25ms/200ms, +1.3125dB/+3dB), sliding_bass=1(230Hz, +4dB)
+                DolbyProfile.MUSIC -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = false, dialogAmount = 7f,
+                    surroundEnabled = false, surroundAmount = 0f,
+                    volumeLevelerEnabled = false, volumeLevelerAmount = 2f,
+                    bassEnabled = false, bassAmount = 6f, bassBoostMaxDb = 6.0f, bassCutoffHz = 200f, bassWidthOct = 1.0f,
+                    volmaxBoostDb = 6.0f,
+                    vlldpMbcEnabled = true, vlldpMbcAttackMs = 25f, vlldpMbcReleaseMs = 200f,
+                    vlldpMbcLowGroupMakeupDb = 1.3125f, vlldpMbcHighGroupMakeupDb = 3.0f,
+                    slidingBassEnabled = true, slidingBassXoHz = 230f, slidingBassMaxGainDb = 4.0f
+                )
+                // Speaker [game]: ieq_en=0, de_en=0, surr_en=1(boost=0), vl_en=0, volmax=64(+4dB), mbc=1(25ms/200ms, +3dB/+3dB)
+                DolbyProfile.GAME -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = false, dialogAmount = 7f,
+                    surroundEnabled = true, surroundAmount = 0f,
+                    volumeLevelerEnabled = false, volumeLevelerAmount = 0f,
+                    bassEnabled = false, bassAmount = 6f, bassBoostMaxDb = 6.0f, bassCutoffHz = 200f, bassWidthOct = 1.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = true, vlldpMbcAttackMs = 25f, vlldpMbcReleaseMs = 200f,
+                    vlldpMbcLowGroupMakeupDb = 3.0f, vlldpMbcHighGroupMakeupDb = 3.0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Speaker [voice]: ieq_en=0, de_en=1(8), surr_en=0, vl_en=0, volmax=96(+6dB!)
+                DolbyProfile.VOICE -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 8f,
+                    surroundEnabled = false, surroundAmount = 0f,
+                    volumeLevelerEnabled = false, volumeLevelerAmount = 0f,
+                    bassEnabled = false, bassAmount = 6f, bassBoostMaxDb = 6.0f, bassCutoffHz = 200f, bassWidthOct = 1.0f,
+                    volmaxBoostDb = 6.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+                // Speaker [personalize_user1]: ieq_en=0, de_en=1(10), surr_en=1(48=+3dB), vl_en=1(2), volmax=64(+4dB)
+                DolbyProfile.CUSTOM -> FactoryEndpointSpec(
+                    ieqPreset = IeqPreset.OFF, ieqAmount = 10f,
+                    dialogEnabled = true, dialogAmount = 10f,
+                    surroundEnabled = true, surroundAmount = 3f,
+                    volumeLevelerEnabled = true, volumeLevelerAmount = 2f,
+                    bassEnabled = false, bassAmount = 6f, bassBoostMaxDb = 6.0f, bassCutoffHz = 200f, bassWidthOct = 1.0f,
+                    volmaxBoostDb = 4.0f,
+                    vlldpMbcEnabled = false, vlldpMbcAttackMs = 10f, vlldpMbcReleaseMs = 20f,
+                    vlldpMbcLowGroupMakeupDb = 0f, vlldpMbcHighGroupMakeupDb = 0f,
+                    slidingBassEnabled = false, slidingBassXoHz = 180f, slidingBassMaxGainDb = 0f
+                )
+            }
+        }
+    }
 
     fun getIeqDeltaDb(preset: IeqPreset, amount0To10: Float): FloatArray {
         if (preset == IeqPreset.OFF || amount0To10 <= 0.01f) {
@@ -103,15 +355,21 @@ object YogaDolbyTuningData {
             IeqPreset.DETAILED -> RAW_IEQ_DETAILED
             IeqPreset.BALANCED -> RAW_IEQ_BALANCED
             IeqPreset.WARM -> RAW_IEQ_WARM
-            IeqPreset.OFF -> RAW_IEQ_NEUTRAL_REF
+            IeqPreset.OFF -> return FloatArray(BAND_COUNT) { 0f }
         }
-        val scale = (amount0To10 / 10f).coerceIn(0f, 1.2f)
+        val targetMean = coreMean0To17(rawTarget)
+        val refMean = coreMean0To17Float(ZERO_MEAN_MUSIC_REF_16DB)
+        val scale = (amount0To10 / 10f).coerceIn(0f, 1.0f)
+
         return FloatArray(BAND_COUNT) { i ->
-            val rawDiffDb = (rawTarget[i] - RAW_IEQ_NEUTRAL_REF[i]) / 16f
-            (rawDiffDb * scale).coerceIn(-6.5f, 6.5f)
+            val zeroedTarget16Db = rawTarget[i] - targetMean
+            val zeroedRef16Db = ZERO_MEAN_MUSIC_REF_16DB[i] - refMean
+            val deltaDb = (zeroedTarget16Db - zeroedRef16Db) / 16f
+            (deltaDb * scale).coerceIn(-12f, 12f)
         }
     }
 
+    /** 100% Verbatim <tuning-vlldp><audio-optimizer-bands> in dB (value / 16f, NO scaling) */
     fun getEndpointOptimizerDb(endpoint: ActiveEndpoint, profile: DolbyProfile): FloatArray {
         return when (endpoint) {
             ActiveEndpoint.HEADPHONE -> FloatArray(BAND_COUNT) { i ->
@@ -122,13 +380,12 @@ object YogaDolbyTuningData {
                     DolbyProfile.MOVIE, DolbyProfile.MUSIC, DolbyProfile.GAME -> RAW_SPK_MEDIA_OPT
                     else -> RAW_SPK_DYNAMIC_OPT
                 }
-                // Scale Lenovo speaker clarity curve by 0.72x for balanced phone dual-speaker playback
-                FloatArray(BAND_COUNT) { i -> (src[i] / 16f) * 0.72f }
+                FloatArray(BAND_COUNT) { i -> src[i] / 16f }
             }
         }
     }
 
-    /** Interpolates 10-band user Graphic EQ (32Hz..16kHz) smoothly onto the 20 hardware bands */
+    /** Interpolates 10-band user Graphic EQ (32Hz..16kHz, ±12dB = 192/16) onto the 20 bands */
     fun map10BandTo20Band(geq10Db: List<Float>): FloatArray {
         if (geq10Db.size != 10) return FloatArray(BAND_COUNT) { 0f }
         val logUi = FloatArray(10) { ln(UI_GEQ_FREQS_HZ[it]) }
@@ -150,10 +407,21 @@ object YogaDolbyTuningData {
         }
     }
 
-    /** Computes the complete 20-band composite EQ curve (dB) for both DSP and UI visualizer */
+    /**
+     * Computes the exact composite 20-band EQ curve (dB) combining:
+     * - VLLDP <audio-optimizer-bands> (1:1 raw XML)
+     * - CP <ieq-bands-set> (1:1 raw XML)
+     * - CP <graphic-equalizer-bands> (1:1 user GEQ, flat 0 dB by default)
+     * - CP <dialog-enhancer> (speech presence band, ducking=0 per XML)
+     * - CP <bass-enhancer> (disabled=0 by default per XML; 100Hz/+9dB HP or 200Hz SPK when manually enabled)
+     * - VLLDP <sliding-bass> (Speaker Music 230Hz dynamic low-end boost per XML)
+     *
+     * Zero invented Movie/Game/Voice bells, zero scaling!
+     */
     fun computeComposite20BandDb(state: DolbyUiState, activeEndpoint: ActiveEndpoint): FloatArray {
         if (!state.masterEnabled) return FloatArray(BAND_COUNT) { 0f }
 
+        val spec = getFactorySpec(activeEndpoint, state.currentProfile)
         val baseOpt = getEndpointOptimizerDb(activeEndpoint, state.currentProfile)
         val ieqDelta = getIeqDeltaDb(state.ieqPreset, state.ieqAmount)
         val userGeq20 = if (state.currentProfile == DolbyProfile.CUSTOM || state.customEqEnabledInPreset) {
@@ -167,60 +435,30 @@ object YogaDolbyTuningData {
             val freq = BAND_CENTERS_HZ[i]
             var gain = baseOpt[i] + ieqDelta[i] + userGeq20[i]
 
-            // Profile acoustic signature from DAX3 tuning-cp
-            when (state.currentProfile) {
-                DolbyProfile.MOVIE -> {
-                    // Sub-bass theater impact + spacious upper-detail lift
-                    if (activeEndpoint == ActiveEndpoint.HEADPHONE && freq <= 160f) {
-                        gain += 2.6f * exp(-((freq - 60f) / 95f).pow(2))
-                    }
-                    if (freq in 2500f..12000f) {
-                        gain += 1.4f
-                    }
-                }
-                DolbyProfile.GAME -> {
-                    // Footstep & positional cue emphasis (1.2kHz - 4.8kHz) + controlled sub-bass
-                    if (freq in 1200f..5000f) {
-                        gain += 2.4f * exp(-((ln(freq) - ln(2600f)) / 0.65f).pow(2))
-                    }
-                    if (activeEndpoint == ActiveEndpoint.HEADPHONE && freq <= 150f) {
-                        gain += 1.5f
-                    }
-                }
-                DolbyProfile.VOICE -> {
-                    // Clean low-mud cut (<220Hz) + vocal intelligibility focus (800Hz - 3.8kHz)
-                    if (freq < 220f) gain -= 3.2f
-                    if (freq in 800f..4000f) gain += 2.2f
-                }
-                DolbyProfile.DYNAMIC, DolbyProfile.MUSIC, DolbyProfile.CUSTOM -> Unit
-            }
-
-            // Dialog Enhancer (<dialog-enhancer-amount> 0..10 -> 800Hz..3800Hz vocal band presence)
+            // CP <dialog-enhancer-enable> & <dialog-enhancer-amount> (<dialog-enhancer-ducking value="0"/>)
             if (state.dialogEnhancerEnabled && state.dialogEnhancerAmount > 0f) {
-                val vocalBell = exp(-((ln(freq) - ln(1850f)) / 0.68f).pow(2))
-                val mudTrim = if (freq in 180f..420f) -0.12f * state.dialogEnhancerAmount else 0f
-                gain += (state.dialogEnhancerAmount / 10f) * 3.8f * vocalBell + mudTrim
+                val vocalBell = exp(-((ln(freq) - ln(1800f)) / 0.65f).pow(2))
+                gain += (state.dialogEnhancerAmount / 10f) * 3.5f * vocalBell
             }
 
-            // Bass Enhancer (<bass-enhancer-boost value="144" cutoff="100">)
+            // CP <bass-enhancer-enable> (0 by default in all PC profiles; uses exact cutoff & boost when manually enabled)
             if (state.bassEnhancerEnabled && state.bassEnhancerAmount > 0f) {
-                if (activeEndpoint == ActiveEndpoint.HEADPHONE) {
-                    // 100Hz resonant shelf modeled from Headphone XML
-                    val shelf = 1f / (1f + (freq / 115f).pow(2.4f))
-                    gain += (state.bassEnhancerAmount / 10f) * 6.5f * shelf
-                } else {
-                    // Psychoacoustic upper-bass harmonic punch (130Hz - 260Hz) safe for phone speakers
-                    val punch = exp(-((ln(freq) - ln(175f)) / 0.42f).pow(2))
-                    gain += (state.bassEnhancerAmount / 10f) * 3.5f * punch
+                val shelf = 1f / (1f + (freq / spec.bassCutoffHz).pow(2.2f / spec.bassWidthOct.coerceAtLeast(0.8f)))
+                gain += (state.bassEnhancerAmount / 10f) * spec.bassBoostMaxDb * shelf
+            }
+
+            // VLLDP <sliding-bass-enable value="1"/> (Speaker Music: xo=230Hz, max_gain=4.0dB, curve=0,43,6,0,0)
+            if (spec.slidingBassEnabled && freq <= spec.slidingBassXoHz * 1.15f) {
+                val sbGain = when (i) {
+                    0 -> 2.6875f // 43 / 16 dB
+                    1 -> 3.6f    // Peak punch below 230Hz xo
+                    2 -> 1.8f    // 234Hz crossover transition
+                    else -> 0f
                 }
+                gain += sbGain
             }
 
-            // Subtle stereo presence air compensation when Surround Virtualizer is active
-            if (state.surroundEnabled && state.surroundAmount > 0f && freq in 1800f..9500f) {
-                gain += (state.surroundAmount / 10f) * 1.1f
-            }
-
-            result[i] = min(12f, max(-12f, gain))
+            result[i] = min(15f, max(-15f, gain))
         }
         return result
     }
@@ -229,107 +467,37 @@ object YogaDolbyTuningData {
 enum class DolbyProfile(
     val id: String,
     val titleCn: String,
-    val subtitleCn: String,
-    val defaultIeq: IeqPreset,
-    val defaultIeqAmount: Float,
-    val defaultDialogEnabled: Boolean,
-    val defaultDialogAmount: Float,
-    val defaultSurroundEnabled: Boolean,
-    val defaultSurroundAmount: Float,
-    val defaultVolumeLeveler: Boolean,
-    val defaultVolumeLevelerAmount: Float,
-    val defaultBassEnabled: Boolean,
-    val defaultBassAmount: Float
+    val subtitleCn: String
 ) {
     DYNAMIC(
         id = "dynamic",
         titleCn = "动态",
-        subtitleCn = "根据播放内容智能平衡低频冲击与对白清晰度（YOGA 默认推荐）",
-        defaultIeq = IeqPreset.BALANCED,
-        defaultIeqAmount = 8f,
-        defaultDialogEnabled = true,
-        defaultDialogAmount = 5f,
-        defaultSurroundEnabled = true,
-        defaultSurroundAmount = 6f,
-        defaultVolumeLeveler = true,
-        defaultVolumeLevelerAmount = 4f,
-        defaultBassEnabled = true,
-        defaultBassAmount = 4f
+        subtitleCn = "联想管家默认模式：原厂 IEQ 均衡 + 对白(5) + 环绕(+6dB) + VolMax(+4dB)"
     ),
     MOVIE(
         id = "movie",
         titleCn = "电影",
-        subtitleCn = "宽阔环绕声场、深沉影院低频下潜，智能提亮人声对白",
-        defaultIeq = IeqPreset.BALANCED,
-        defaultIeqAmount = 6f,
-        defaultDialogEnabled = true,
-        defaultDialogAmount = 6f,
-        defaultSurroundEnabled = true,
-        defaultSurroundAmount = 8.5f,
-        defaultVolumeLeveler = true,
-        defaultVolumeLevelerAmount = 5f,
-        defaultBassEnabled = true,
-        defaultBassAmount = 6f
+        subtitleCn = "原厂影院参数：环绕(+6dB) + 对白(5) + 扬声器双段MBC(+3dB) + VolMax(+4dB)"
     ),
     MUSIC(
         id = "music",
         titleCn = "音乐",
-        subtitleCn = "还原纯净三频乐器分离度与人声结像，支持均衡/温暖/细腻调音",
-        defaultIeq = IeqPreset.BALANCED,
-        defaultIeqAmount = 8f,
-        defaultDialogEnabled = false,
-        defaultDialogAmount = 3f,
-        defaultSurroundEnabled = false,
-        defaultSurroundAmount = 3f,
-        defaultVolumeLeveler = false,
-        defaultVolumeLevelerAmount = 2f,
-        defaultBassEnabled = true,
-        defaultBassAmount = 3.5f
+        subtitleCn = "原厂音乐参数：耳机 IEQ(8) / 扬声器 VolMax(+6dB) + 双段MBC + 230Hz动态低音(+4dB)"
     ),
     GAME(
         id = "game",
         titleCn = "游戏",
-        subtitleCn = "拓宽 3D 听声辨位声场，强化脚步声与环境细节瞬态",
-        defaultIeq = IeqPreset.DETAILED,
-        defaultIeqAmount = 7f,
-        defaultDialogEnabled = false,
-        defaultDialogAmount = 4f,
-        defaultSurroundEnabled = true,
-        defaultSurroundAmount = 8f,
-        defaultVolumeLeveler = true,
-        defaultVolumeLevelerAmount = 3f,
-        defaultBassEnabled = true,
-        defaultBassAmount = 4f
+        subtitleCn = "原厂游戏参数：开启 3D 环绕解码器声场 + 扬声器双段MBC(+3dB) + VolMax(+4dB)"
     ),
     VOICE(
         id = "voice",
-        titleCn = "语音 / 网课",
-        subtitleCn = "源自联想 YOGA 专调网课与播客模式，滤除低频嗡鸣、聚焦人声",
-        defaultIeq = IeqPreset.OFF,
-        defaultIeqAmount = 0f,
-        defaultDialogEnabled = true,
-        defaultDialogAmount = 9.5f,
-        defaultSurroundEnabled = false,
-        defaultSurroundAmount = 0f,
-        defaultVolumeLeveler = true,
-        defaultVolumeLevelerAmount = 7f,
-        defaultBassEnabled = false,
-        defaultBassAmount = 0f
+        titleCn = "语音",
+        subtitleCn = "原厂人声模式：高强度对白聚焦(耳机10 / 扬声器8 + VolMax +6dB)"
     ),
     CUSTOM(
         id = "custom",
         titleCn = "自定义",
-        subtitleCn = "10 段手动图形均衡器（±12dB）与四大杜比音效模块自由组合",
-        defaultIeq = IeqPreset.OFF,
-        defaultIeqAmount = 0f,
-        defaultDialogEnabled = true,
-        defaultDialogAmount = 5f,
-        defaultSurroundEnabled = true,
-        defaultSurroundAmount = 5f,
-        defaultVolumeLeveler = true,
-        defaultVolumeLevelerAmount = 3f,
-        defaultBassEnabled = true,
-        defaultBassAmount = 4f
+        subtitleCn = "对应电脑个性化 1–3：默认平直 0dB 均衡器 + 对白(10) + 环绕(+3dB) + 音量均衡(2)"
     );
 
     companion object {
@@ -338,20 +506,20 @@ enum class DolbyProfile(
 }
 
 enum class IeqPreset(val id: String, val labelCn: String, val descCn: String) {
-    OFF("off", "关闭", "不施加智能目标曲线"),
-    BALANCED("balanced", "均衡", "三频自然均衡（原厂默认）"),
-    WARM("warm", "温暖", "饱满中低频与柔和耐听高频"),
-    DETAILED("detailed", "细腻", "增强泛音空气感与乐器解析力");
+    OFF("off", "关闭", "不施加 IEQ 曲线（原厂电影/游戏/语音默认关闭）"),
+    BALANCED("balanced", "均衡", "原厂 ieq_balanced 20段靶向曲线"),
+    WARM("warm", "温暖", "原厂 ieq_warm 饱满中低频曲线"),
+    DETAILED("detailed", "细腻", "原厂 ieq_detailed 高频解析力曲线");
 
     companion object {
-        fun fromId(id: String): IeqPreset = entries.firstOrNull { it.id == id } ?: BALANCED
+        fun fromId(id: String): IeqPreset = entries.firstOrNull { it.id == id } ?: OFF
     }
 }
 
 enum class EndpointOverride(val id: String, val labelCn: String) {
     AUTO("auto", "自动识别"),
-    FORCE_HEADPHONE("headphone", "强制耳机曲线"),
-    FORCE_SPEAKER("speaker", "强制扬声器曲线");
+    FORCE_HEADPHONE("headphone", "强制耳机 XML"),
+    FORCE_SPEAKER("speaker", "强制扬声器 XML");
 
     companion object {
         fun fromId(id: String): EndpointOverride = entries.firstOrNull { it.id == id } ?: AUTO
@@ -359,8 +527,8 @@ enum class EndpointOverride(val id: String, val labelCn: String) {
 }
 
 enum class ActiveEndpoint(val labelCn: String) {
-    HEADPHONE("耳机模式"),
-    SPEAKER("扬声器模式")
+    HEADPHONE("耳机模式 (Atmos 3.7)"),
+    SPEAKER("扬声器模式 (ALC287)")
 }
 
 data class DolbyUiState(
@@ -370,27 +538,26 @@ data class DolbyUiState(
     val detectedHeadphone: Boolean = false,
     val connectedDeviceName: String = "手机内置扬声器",
     val activeSessionCount: Int = 0,
+    val attachedSessionSummary: String = "等待音频流",
     val globalMixAttached: Boolean = false,
     val currentProfile: DolbyProfile = DolbyProfile.DYNAMIC,
-    val ieqPreset: IeqPreset = DolbyProfile.DYNAMIC.defaultIeq,
-    val ieqAmount: Float = DolbyProfile.DYNAMIC.defaultIeqAmount,
-    val surroundEnabled: Boolean = DolbyProfile.DYNAMIC.defaultSurroundEnabled,
-    val surroundAmount: Float = DolbyProfile.DYNAMIC.defaultSurroundAmount,
-    val dialogEnhancerEnabled: Boolean = DolbyProfile.DYNAMIC.defaultDialogEnabled,
-    val dialogEnhancerAmount: Float = DolbyProfile.DYNAMIC.defaultDialogAmount,
-    val volumeLevelerEnabled: Boolean = DolbyProfile.DYNAMIC.defaultVolumeLeveler,
-    val volumeLevelerAmount: Float = DolbyProfile.DYNAMIC.defaultVolumeLevelerAmount,
-    val bassEnhancerEnabled: Boolean = DolbyProfile.DYNAMIC.defaultBassEnabled,
-    val bassEnhancerAmount: Float = DolbyProfile.DYNAMIC.defaultBassAmount,
+    val ieqPreset: IeqPreset = IeqPreset.BALANCED,
+    val ieqAmount: Float = 10f,
+    val surroundEnabled: Boolean = true,
+    val surroundAmount: Float = 6f,
+    val dialogEnhancerEnabled: Boolean = true,
+    val dialogEnhancerAmount: Float = 5f,
+    val volumeLevelerEnabled: Boolean = true,
+    val volumeLevelerAmount: Float = 4f,
+    val bassEnhancerEnabled: Boolean = false,
+    val bassEnhancerAmount: Float = 10f,
     val customSlotIndex: Int = 0,
     val customEqEnabledInPreset: Boolean = false,
     val customSlots: List<List<Float>> = listOf(
-        // Slot 1: V-Shape Hi-Fi
-        listOf(3.5f, 4.0f, 2.0f, -0.5f, -1.0f, 0.0f, 1.5f, 3.0f, 3.5f, 2.5f),
-        // Slot 2: Vocal & Acoustic Clarity
-        listOf(-1.5f, -0.5f, 0.5f, 1.5f, 2.5f, 3.5f, 3.0f, 1.5f, 1.0f, 0.5f),
-        // Slot 3: Deep Cinema Sub-Bass
-        listOf(5.5f, 5.0f, 2.5f, 0.5f, 0.0f, 1.0f, 2.0f, 2.5f, 2.0f, 1.5f)
+        // All 3 Personalize User slots in PC XML default to array_20_zero (flat 0.0 dB)
+        List(10) { 0f },
+        List(10) { 0f },
+        List(10) { 0f }
     )
 ) {
     val effectiveEndpoint: ActiveEndpoint

@@ -43,6 +43,9 @@ class MainActivity : ComponentActivity() {
                     onMasterToggle = { enabled ->
                         DolbyRepository.setMasterEnabled(enabled)
                         DolbyAudioService.startOrUpdate(this)
+                    },
+                    onRebindDsp = {
+                        DolbyAudioService.forceRebind(this)
                     }
                 )
             }

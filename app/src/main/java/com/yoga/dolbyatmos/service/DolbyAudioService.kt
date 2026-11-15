@@ -35,6 +35,7 @@ class DolbyAudioService : Service() {
 
         const val ACTION_SYNC_SESSION = "com.yoga.dolbyatmos.ACTION_SYNC_SESSION"
         const val ACTION_TOGGLE_MASTER = "com.yoga.dolbyatmos.ACTION_TOGGLE_MASTER"
+        const val ACTION_REBIND_DSP = "com.yoga.dolbyatmos.ACTION_REBIND_DSP"
         const val EXTRA_SESSION_ID = "extra_session_id"
         const val EXTRA_SESSION_OPEN = "extra_session_open"
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
@@ -43,6 +44,17 @@ class DolbyAudioService : Service() {
             val appCtx = context.applicationContext
             DolbyRepository.init(appCtx)
             val intent = Intent(appCtx, DolbyAudioService::class.java)
+            try {
+                ContextCompat.startForegroundService(appCtx, intent)
+            } catch (_: Throwable) {
+            }
+        }
+
+        fun forceRebind(context: Context) {
+            val appCtx = context.applicationContext
+            val intent = Intent(appCtx, DolbyAudioService::class.java).apply {
+                action = ACTION_REBIND_DSP
+            }
             try {
                 ContextCompat.startForegroundService(appCtx, intent)
             } catch (_: Throwable) {
@@ -115,6 +127,9 @@ class DolbyAudioService : Service() {
             ACTION_TOGGLE_MASTER -> {
                 val next = !DolbyRepository.state.value.masterEnabled
                 DolbyRepository.setMasterEnabled(next)
+            }
+            ACTION_REBIND_DSP -> {
+                dspEngine.forceRebindAll()
             }
             ACTION_SYNC_SESSION -> {
                 val sid = intent.getIntExtra(EXTRA_SESSION_ID, -1)
