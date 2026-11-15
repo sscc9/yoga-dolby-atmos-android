@@ -1,0 +1,2 @@
+-keep class com.yoga.dolbyatmos.** { *; }
+-dontwarn android.media.audiofx.**
