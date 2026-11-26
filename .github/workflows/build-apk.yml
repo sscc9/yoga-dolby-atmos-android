@@ -61,6 +61,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create v1.1.1 output-apk/*.apk \
-            --title "杜比音效 · YOGA Pro 14s (83BU) 原厂音质 + 自动音量拉平版 v1.1.1" \
-            --notes "100% 保留 v1.1.0 原厂全部调音与质感：在最末尾 Limiter 后级自动按模式拉平音量（+6dB 模式减 6dB / +4dB 模式减 4dB，扬声器与耳机均生效），新增设置弹窗支持一键跳转忽略后台耗电、隐藏最近任务后台卡片及隐藏通知栏。" \
+            --title "杜比音效 · YOGA Pro 14s (83BU) 原厂音质 + 手机扬声器去齿音锁定版 v1.1.1" \
+            --notes "100% 保留 v1.1.0 原厂全部调音与质感：后级自动拉平音量（+6dB减6dB / +4dB减4dB），内置「手机扬声器优化」开关（默认开启自动施加 4K/8K -3dB 去齿音并将 10 段均衡器置灰锁定防误触，插耳机自动直通），右上角 ⚙️ 支持隐藏后台卡片与通知栏。" \
             || gh release upload v1.1.1 output-apk/*.apk --clobber

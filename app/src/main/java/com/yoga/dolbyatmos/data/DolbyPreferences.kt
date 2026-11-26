@@ -51,6 +51,7 @@ object DolbyRepository {
 
         val baseState = DolbyUiState(
             masterEnabled = sp.getBoolean("master_enabled", true),
+            speakerOptimizationEnabled = sp.getBoolean("speaker_opt_enabled", true),
             excludeFromRecents = sp.getBoolean("exclude_from_recents", false),
             globalMixFallback = sp.getBoolean("global_mix_fallback", true),
             endpointOverride = override,
@@ -133,6 +134,11 @@ object DolbyRepository {
     fun setMasterEnabled(enabled: Boolean) {
         prefs?.edit()?.putBoolean("master_enabled", enabled)?.apply()
         _state.update { it.copy(masterEnabled = enabled) }
+    }
+
+    fun setSpeakerOptimizationEnabled(enabled: Boolean) {
+        prefs?.edit()?.putBoolean("speaker_opt_enabled", enabled)?.apply()
+        _state.update { it.copy(speakerOptimizationEnabled = enabled) }
     }
 
     fun setExcludeFromRecents(exclude: Boolean) {

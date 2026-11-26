@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NotificationsOff
@@ -192,10 +193,11 @@ fun DolbyAccessScreen(
             }
         }
 
-        // 6. 10-Band Interactive Graphic Equalizer (Always shown in CUSTOM, optional overlay in presets)
+        // 6. 10-Band Interactive Graphic Equalizer + Phone Speaker Optimization Lock
         item {
             GraphicEqualizerCard(
                 state = state,
+                onToggleSpeakerOptimization = { DolbyRepository.setSpeakerOptimizationEnabled(it) },
                 onSelectSlot = { DolbyRepository.selectCustomSlot(it) },
                 onToggleOverlayInPreset = { DolbyRepository.setCustomEqEnabledInPreset(it) },
                 onBandChange = { idx, db -> DolbyRepository.updateCustomBand(idx, db) },
@@ -851,13 +853,16 @@ private fun IeqToneCard(
 @Composable
 private fun GraphicEqualizerCard(
     state: DolbyUiState,
+    onToggleSpeakerOptimization: (Boolean) -> Unit,
     onSelectSlot: (Int) -> Unit,
     onToggleOverlayInPreset: (Boolean) -> Unit,
     onBandChange: (Int, Float) -> Unit,
     onFlatten: () -> Unit
 ) {
+    val isSpeaker = state.effectiveEndpoint == ActiveEndpoint.SPEAKER
+    val isSpeakerOptLocked = isSpeaker && state.speakerOptimizationEnabled
     val isCustomProfile = state.currentProfile == DolbyProfile.CUSTOM
-    val active = isCustomProfile || state.customEqEnabledInPreset
+    val manualEqActive = !isSpeakerOptLocked && (isCustomProfile || state.customEqEnabledInPreset)
 
     Column(
         modifier = Modifier
@@ -867,6 +872,7 @@ private fun GraphicEqualizerCard(
             .border(1.dp, DolbyBorder, RoundedCornerShape(16.dp))
             .padding(15.dp)
     ) {
+        // Phone Speaker Sibilance Optimization Switch (Default ON)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -874,106 +880,209 @@ private fun GraphicEqualizerCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "10 段自定义图形均衡器",
+                    text = "手机扬声器优化",
                     color = DolbyTextPrimary,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (isCustomProfile) {
-                        "上下滑动柱条调节（自动插值映射至底层 20 段滤波器）"
-                    } else {
-                        "可叠加在当前场景预设之上微调频响"
+                    text = when {
+                        !isSpeaker -> "外放专属（当前耳机自动直通不衰减高频）"
+                        state.speakerOptimizationEnabled -> "自动优化 4K / 8K 齿音 (-3.0 dB)，均衡器已锁定防误触"
+                        else -> "已关闭，可在下方自定义调节 10 段均衡器"
                     },
                     color = DolbyTextSecondary,
                     fontSize = 11.sp
                 )
             }
-
-            if (!isCustomProfile) {
-                Switch(
-                    checked = state.customEqEnabledInPreset,
-                    onCheckedChange = onToggleOverlayInPreset,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color(0xFF04131D),
-                        checkedTrackColor = DolbyCyan
-                    )
+            Spacer(modifier = Modifier.width(10.dp))
+            Switch(
+                checked = state.speakerOptimizationEnabled,
+                onCheckedChange = onToggleSpeakerOptimization,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color(0xFF04131D),
+                    checkedTrackColor = DolbyCyan
                 )
-            } else {
-                Text(
-                    text = "归零平直",
-                    color = DolbyCyan,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onFlatten() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
+            )
         }
 
-        AnimatedVisibility(visible = active) {
-            Column(modifier = Modifier.padding(top = 12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf("自定义 1", "自定义 2", "自定义 3").forEachIndexed { idx, name ->
-                        val selected = state.customSlotIndex == idx
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(if (selected) DolbyCardActive else Color(0xFF0A0D1B))
-                                .border(
-                                    1.dp,
-                                    if (selected) DolbyViolet else DolbyBorder,
-                                    RoundedCornerShape(9.dp)
+        if (isSpeakerOptLocked) {
+            // Style 1: Visible Grayed-Out & Touch-Locked 10-Band EQ showing 4K = -3.0, 8K = -3.0
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xFF0C1020))
+                    .border(1.dp, Color(0xFF232A46), RoundedCornerShape(9.dp))
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Lock,
+                    contentDescription = null,
+                    tint = Color(0xFF8FA0C9),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "10 段均衡器已锁定（关闭上方开关可解锁调节）",
+                    color = Color(0xFF8FA0C9),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(176.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val lockedBands = YogaDolbyTuningData.SPEAKER_OPT_GEQ_10
+                YogaDolbyTuningData.UI_GEQ_LABELS.forEachIndexed { idx, freqLabel ->
+                    val gain = lockedBands.getOrElse(idx) { 0f }
+                    VerticalEqBar(
+                        modifier = Modifier.weight(1f),
+                        gainDb = gain,
+                        freqLabel = freqLabel,
+                        locked = true,
+                        onGainChange = {}
+                    )
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0xFF1E2440))
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "10 段自定义图形均衡器",
+                        color = DolbyTextPrimary,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (isCustomProfile) {
+                            "上下滑动柱条调节（自动插值映射至底层 20 段滤波器）"
+                        } else {
+                            "可叠加在当前场景预设之上微调频响"
+                        },
+                        color = DolbyTextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+                if (!isCustomProfile) {
+                    Switch(
+                        checked = state.customEqEnabledInPreset,
+                        onCheckedChange = onToggleOverlayInPreset,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFF04131D),
+                            checkedTrackColor = DolbyCyan
+                        )
+                    )
+                } else {
+                    Text(
+                        text = "归零平直",
+                        color = DolbyCyan,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onFlatten() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = manualEqActive) {
+                Column(modifier = Modifier.padding(top = 12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf("自定义 1", "自定义 2", "自定义 3").forEachIndexed { idx, name ->
+                            val selected = state.customSlotIndex == idx
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (selected) DolbyCardActive else Color(0xFF0A0D1B))
+                                    .border(
+                                        1.dp,
+                                        if (selected) DolbyViolet else DolbyBorder,
+                                        RoundedCornerShape(9.dp)
+                                    )
+                                    .clickable { onSelectSlot(idx) }
+                                    .padding(vertical = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = name,
+                                    color = if (selected) Color(0xFFD1B3FF) else DolbyTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1
                                 )
-                                .clickable { onSelectSlot(idx) }
-                                .padding(vertical = 7.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                            }
+                        }
+
+                        if (!isCustomProfile) {
                             Text(
-                                text = name,
-                                color = if (selected) Color(0xFFD1B3FF) else DolbyTextSecondary,
+                                text = "归零",
+                                color = DolbyCyan,
                                 fontSize = 11.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onFlatten() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
                             )
                         }
                     }
 
-                    if (!isCustomProfile) {
-                        Text(
-                            text = "归零",
-                            color = DolbyCyan,
-                            fontSize = 11.sp,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { onFlatten() }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        )
-                    }
-                }
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(190.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val bands = state.activeCustomBands
-                    YogaDolbyTuningData.UI_GEQ_LABELS.forEachIndexed { idx, freqLabel ->
-                        val gain = bands.getOrElse(idx) { 0f }
-                        VerticalEqBar(
-                            modifier = Modifier.weight(1f),
-                            gainDb = gain,
-                            freqLabel = freqLabel,
-                            onGainChange = { onBandChange(idx, it) }
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(190.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val bands = state.activeCustomBands
+                        YogaDolbyTuningData.UI_GEQ_LABELS.forEachIndexed { idx, freqLabel ->
+                            val gain = bands.getOrElse(idx) { 0f }
+                            VerticalEqBar(
+                                modifier = Modifier.weight(1f),
+                                gainDb = gain,
+                                freqLabel = freqLabel,
+                                locked = false,
+                                onGainChange = { onBandChange(idx, it) }
+                            )
+                        }
                     }
                 }
             }
@@ -986,9 +1095,41 @@ private fun VerticalEqBar(
     modifier: Modifier = Modifier,
     gainDb: Float,
     freqLabel: String,
+    locked: Boolean = false,
     onGainChange: (Float) -> Unit
 ) {
     val currentOnGainChange by rememberUpdatedState(onGainChange)
+
+    val touchModifier = if (locked) {
+        Modifier
+    } else {
+        Modifier
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    val norm = 1f - (offset.y / h).coerceIn(0f, 1f)
+                    val db = (norm * 24f) - 12f
+                    currentOnGainChange((kotlin.math.round(db * 2f) / 2f).coerceIn(-12f, 12f))
+                }
+            }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { change, _ ->
+                    change.consume()
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    val norm = 1f - (change.position.y / h).coerceIn(0f, 1f)
+                    val db = (norm * 24f) - 12f
+                    currentOnGainChange((kotlin.math.round(db * 2f) / 2f).coerceIn(-12f, 12f))
+                }
+            }
+    }
+
+    val valueColor = when {
+        locked && gainDb != 0f -> Color(0xFF93A3CC)
+        locked -> Color(0xFF56607F)
+        gainDb != 0f -> DolbyCyan
+        else -> DolbyTextSecondary
+    }
+    val labelColor = if (locked) Color(0xFF636E8F) else DolbyTextSecondary
 
     Column(
         modifier = modifier.fillMaxHeight(),
@@ -996,8 +1137,9 @@ private fun VerticalEqBar(
     ) {
         Text(
             text = String.format(Locale.US, "%+.1f", gainDb),
-            color = if (gainDb != 0f) DolbyCyan else DolbyTextSecondary,
+            color = valueColor,
             fontSize = 9.sp,
+            fontWeight = if (gainDb != 0f) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -1006,23 +1148,7 @@ private fun VerticalEqBar(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val h = size.height.toFloat().coerceAtLeast(1f)
-                        val norm = 1f - (offset.y / h).coerceIn(0f, 1f)
-                        val db = (norm * 24f) - 12f
-                        currentOnGainChange((kotlin.math.round(db * 2f) / 2f).coerceIn(-12f, 12f))
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures { change, _ ->
-                        change.consume()
-                        val h = size.height.toFloat().coerceAtLeast(1f)
-                        val norm = 1f - (change.position.y / h).coerceIn(0f, 1f)
-                        val db = (norm * 24f) - 12f
-                        currentOnGainChange((kotlin.math.round(db * 2f) / 2f).coerceIn(-12f, 12f))
-                    }
-                }
+                .then(touchModifier)
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val cx = size.width / 2f
@@ -1032,7 +1158,7 @@ private fun VerticalEqBar(
 
                 // Background rail
                 drawRoundRect(
-                    color = Color(0xFF1E2442),
+                    color = if (locked) Color(0xFF161A2C) else Color(0xFF1E2442),
                     topLeft = Offset(cx - trackW / 2f, 0f),
                     size = Size(trackW, h),
                     cornerRadius = CornerRadius(trackW / 2f, trackW / 2f)
@@ -1040,7 +1166,7 @@ private fun VerticalEqBar(
 
                 // Center 0 dB tick
                 drawLine(
-                    color = Color(0xFF475385),
+                    color = if (locked) Color(0xFF2F3756) else Color(0xFF475385),
                     start = Offset(cx - 7.dp.toPx(), midY),
                     end = Offset(cx + 7.dp.toPx(), midY),
                     strokeWidth = 1.2.dp.toPx()
@@ -1051,20 +1177,24 @@ private fun VerticalEqBar(
                 val barHeight = kotlin.math.abs(thumbY - midY).coerceAtLeast(2f)
 
                 drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(DolbyCyan, DolbyViolet)),
+                    brush = if (locked) {
+                        Brush.verticalGradient(listOf(Color(0xFF5B678A), Color(0xFF414A68)))
+                    } else {
+                        Brush.verticalGradient(listOf(DolbyCyan, DolbyViolet))
+                    },
                     topLeft = Offset(cx - trackW / 2f, barTop),
                     size = Size(trackW, barHeight),
                     cornerRadius = CornerRadius(trackW / 2f, trackW / 2f)
                 )
 
                 drawCircle(
-                    color = DolbyCyan,
-                    radius = 6.5.dp.toPx(),
+                    color = if (locked) Color(0xFF6E7B9F) else DolbyCyan,
+                    radius = if (locked) 5.5.dp.toPx() else 6.5.dp.toPx(),
                     center = Offset(cx, thumbY)
                 )
                 drawCircle(
-                    color = Color(0xFF081022),
-                    radius = 2.8.dp.toPx(),
+                    color = if (locked) Color(0xFF15192B) else Color(0xFF081022),
+                    radius = 2.5.dp.toPx(),
                     center = Offset(cx, thumbY)
                 )
             }
@@ -1073,7 +1203,7 @@ private fun VerticalEqBar(
         Spacer(modifier = Modifier.height(5.dp))
         Text(
             text = freqLabel,
-            color = DolbyTextSecondary,
+            color = labelColor,
             fontSize = 9.sp,
             maxLines = 1
         )

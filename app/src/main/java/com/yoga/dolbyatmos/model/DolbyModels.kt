@@ -46,6 +46,11 @@ object YogaDolbyTuningData {
         "32", "64", "125", "250", "500", "1K", "2K", "4K", "8K", "16K"
     )
 
+    /** Phone speaker sibilance optimization overlay: 4K = -3.0 dB, 8K = -3.0 dB */
+    val SPEAKER_OPT_GEQ_10 = listOf(
+        0f, 0f, 0f, 0f, 0f, 0f, 0f, -3f, -3f, 0f
+    )
+
     // =========================================================================
     // 1. Exact Verbatim IEQ Target Envelopes from <constant> (1/16 dB)
     // =========================================================================
@@ -424,10 +429,16 @@ object YogaDolbyTuningData {
         val spec = getFactorySpec(activeEndpoint, state.currentProfile)
         val baseOpt = getEndpointOptimizerDb(activeEndpoint, state.currentProfile)
         val ieqDelta = getIeqDeltaDb(state.ieqPreset, state.ieqAmount)
-        val userGeq20 = if (state.currentProfile == DolbyProfile.CUSTOM || state.customEqEnabledInPreset) {
-            map10BandTo20Band(state.activeCustomBands)
-        } else {
-            FloatArray(BAND_COUNT) { 0f }
+        val userGeq20 = when {
+            activeEndpoint == ActiveEndpoint.SPEAKER && state.speakerOptimizationEnabled -> {
+                map10BandTo20Band(SPEAKER_OPT_GEQ_10)
+            }
+            state.currentProfile == DolbyProfile.CUSTOM || state.customEqEnabledInPreset -> {
+                map10BandTo20Band(state.activeCustomBands)
+            }
+            else -> {
+                FloatArray(BAND_COUNT) { 0f }
+            }
         }
 
         val result = FloatArray(BAND_COUNT)
@@ -533,6 +544,7 @@ enum class ActiveEndpoint(val labelCn: String) {
 
 data class DolbyUiState(
     val masterEnabled: Boolean = true,
+    val speakerOptimizationEnabled: Boolean = true,
     val excludeFromRecents: Boolean = false,
     val globalMixFallback: Boolean = true,
     val endpointOverride: EndpointOverride = EndpointOverride.AUTO,
