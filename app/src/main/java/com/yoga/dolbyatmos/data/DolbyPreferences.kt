@@ -51,6 +51,7 @@ object DolbyRepository {
 
         val baseState = DolbyUiState(
             masterEnabled = sp.getBoolean("master_enabled", true),
+            excludeFromRecents = sp.getBoolean("exclude_from_recents", false),
             globalMixFallback = sp.getBoolean("global_mix_fallback", true),
             endpointOverride = override,
             currentProfile = profile,
@@ -132,6 +133,19 @@ object DolbyRepository {
     fun setMasterEnabled(enabled: Boolean) {
         prefs?.edit()?.putBoolean("master_enabled", enabled)?.apply()
         _state.update { it.copy(masterEnabled = enabled) }
+    }
+
+    fun setExcludeFromRecents(exclude: Boolean) {
+        prefs?.edit()?.putBoolean("exclude_from_recents", exclude)?.apply()
+        _state.update { it.copy(excludeFromRecents = exclude) }
+    }
+
+    fun hasAskedNotificationPermission(): Boolean {
+        return prefs?.getBoolean("asked_notification_perm", false) ?: false
+    }
+
+    fun markNotificationPermissionAsked() {
+        prefs?.edit()?.putBoolean("asked_notification_perm", true)?.apply()
     }
 
     fun setGlobalMixFallback(enabled: Boolean) {

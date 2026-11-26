@@ -12,8 +12,8 @@ android {
         applicationId = "com.yoga.dolbyatmos"
         minSdk = 28
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0-PC100"
+        versionCode = 3
+        versionName = "1.1.1-LevelMatched"
 
         vectorDrawables {
             useSupportLibrary = true

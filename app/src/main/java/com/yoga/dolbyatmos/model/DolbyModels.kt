@@ -533,6 +533,7 @@ enum class ActiveEndpoint(val labelCn: String) {
 
 data class DolbyUiState(
     val masterEnabled: Boolean = true,
+    val excludeFromRecents: Boolean = false,
     val globalMixFallback: Boolean = true,
     val endpointOverride: EndpointOverride = EndpointOverride.AUTO,
     val detectedHeadphone: Boolean = false,

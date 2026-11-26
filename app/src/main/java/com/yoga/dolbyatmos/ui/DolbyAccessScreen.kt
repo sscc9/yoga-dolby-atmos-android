@@ -27,18 +27,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -89,13 +95,33 @@ import java.util.Locale
 @Composable
 fun DolbyAccessScreen(
     state: DolbyUiState,
+    isBatteryOptimizationIgnored: Boolean = false,
+    areNotificationsVisible: Boolean = true,
     onMasterToggle: (Boolean) -> Unit,
-    onRebindDsp: () -> Unit = {}
+    onRebindDsp: () -> Unit = {},
+    onToggleExcludeFromRecents: (Boolean) -> Unit = {},
+    onRequestIgnoreBatteryOptimization: () -> Unit = {},
+    onOpenAppDetailsSettings: () -> Unit = {},
+    onOpenNotificationSettings: () -> Unit = {}
 ) {
     var showEndpointMenu by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     val compositeCurve = remember(state) {
         YogaDolbyTuningData.computeComposite20BandDb(state, state.effectiveEndpoint)
+    }
+
+    if (showSettingsDialog) {
+        AppSettingsDialog(
+            excludeFromRecents = state.excludeFromRecents,
+            isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
+            areNotificationsVisible = areNotificationsVisible,
+            onDismiss = { showSettingsDialog = false },
+            onToggleExcludeFromRecents = onToggleExcludeFromRecents,
+            onRequestIgnoreBatteryOptimization = onRequestIgnoreBatteryOptimization,
+            onOpenAppDetailsSettings = onOpenAppDetailsSettings,
+            onOpenNotificationSettings = onOpenNotificationSettings
+        )
     }
 
     LazyColumn(
@@ -107,11 +133,12 @@ fun DolbyAccessScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. Top Header + Master Power Button
+        // 1. Top Header + Settings & Master Power Buttons
         item {
             HeaderSection(
                 state = state,
-                onMasterToggle = onMasterToggle
+                onMasterToggle = onMasterToggle,
+                onOpenSettings = { showSettingsDialog = true }
             )
         }
 
@@ -186,7 +213,8 @@ fun DolbyAccessScreen(
 @Composable
 private fun HeaderSection(
     state: DolbyUiState,
-    onMasterToggle: (Boolean) -> Unit
+    onMasterToggle: (Boolean) -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -238,26 +266,48 @@ private fun HeaderSection(
             )
         }
 
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(
-                    if (state.masterEnabled) {
-                        Brush.linearGradient(listOf(DolbyCyan, DolbyBlue))
-                    } else {
-                        Brush.linearGradient(listOf(Color(0xFF252A42), Color(0xFF1B1F33)))
-                    }
-                )
-                .clickable { onMasterToggle(!state.masterEnabled) },
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Rounded.PowerSettingsNew,
-                contentDescription = "总开关",
-                tint = if (state.masterEnabled) Color(0xFF04131D) else DolbyTextSecondary,
-                modifier = Modifier.size(26.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1A203A))
+                    .border(1.dp, DolbyBorder, CircleShape)
+                    .clickable { onOpenSettings() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = "后台与显示设置",
+                    tint = DolbyTextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (state.masterEnabled) {
+                            Brush.linearGradient(listOf(DolbyCyan, DolbyBlue))
+                        } else {
+                            Brush.linearGradient(listOf(Color(0xFF252A42), Color(0xFF1B1F33)))
+                        }
+                    )
+                    .clickable { onMasterToggle(!state.masterEnabled) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PowerSettingsNew,
+                    contentDescription = "总开关",
+                    tint = if (state.masterEnabled) Color(0xFF04131D) else DolbyTextSecondary,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
         }
     }
 }
@@ -1165,6 +1215,256 @@ private fun DspModuleCard(
                     modifier = Modifier.width(30.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AppSettingsDialog(
+    excludeFromRecents: Boolean,
+    isBatteryOptimizationIgnored: Boolean,
+    areNotificationsVisible: Boolean,
+    onDismiss: () -> Unit,
+    onToggleExcludeFromRecents: (Boolean) -> Unit,
+    onRequestIgnoreBatteryOptimization: () -> Unit,
+    onOpenAppDetailsSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF12162A))
+                .border(1.dp, DolbyBorder, RoundedCornerShape(20.dp))
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "后台与系统设置",
+                    color = DolbyTextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1E2440))
+                        .clickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "关闭",
+                        tint = DolbyTextSecondary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            // 1. Hide from Recents
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DolbyCardBg)
+                    .border(1.dp, DolbyBorder, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.VisibilityOff,
+                        contentDescription = null,
+                        tint = DolbyCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "隐藏最近任务后台卡片",
+                            color = DolbyTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "退出后不在多任务后台显示，防误划清后台，音效照常运行",
+                            color = DolbyTextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(
+                    checked = excludeFromRecents,
+                    onCheckedChange = onToggleExcludeFromRecents,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color(0xFF04131D),
+                        checkedTrackColor = DolbyCyan
+                    )
+                )
+            }
+
+            // 2. Battery Optimization & vivo Background Power
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DolbyCardBg)
+                    .border(1.dp, DolbyBorder, RoundedCornerShape(14.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.BatteryChargingFull,
+                            contentDescription = null,
+                            tint = DolbyCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "允许后台高耗电 / 电池优化",
+                            color = DolbyTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Text(
+                        text = if (isBatteryOptimizationIgnored) "白名单已开" else "建议开启",
+                        color = if (isBatteryOptimizationIgnored) Color(0xFF4ADE80) else Color(0xFFFBBF24),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = "防止系统冻结后台导致插拔耳机不自动切换（本应用待机 0% 耗电）",
+                    color = DolbyTextSecondary,
+                    fontSize = 11.sp
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0B1324))
+                            .border(1.dp, DolbyCyan.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .clickable { onRequestIgnoreBatteryOptimization() }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "忽略电池优化",
+                            color = DolbyCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0B1324))
+                            .border(1.dp, DolbyBorder, RoundedCornerShape(10.dp))
+                            .clickable { onOpenAppDetailsSettings() }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "应用详情(vivo电量)",
+                            color = DolbyTextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // 3. Notification Bar Visibility
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DolbyCardBg)
+                    .border(1.dp, DolbyBorder, RoundedCornerShape(14.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.NotificationsOff,
+                            contentDescription = null,
+                            tint = DolbyCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "隐藏通知栏常驻图标",
+                            color = DolbyTextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Text(
+                        text = if (areNotificationsVisible) "当前显示中" else "已隐藏",
+                        color = if (areNotificationsVisible) DolbyTextSecondary else Color(0xFF4ADE80),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = "点下方按钮关闭通知显示后，状态栏将彻底干净，不影响后台音效与自动切换（请配合上方允许后台高耗电）",
+                    color = DolbyTextSecondary,
+                    fontSize = 11.sp
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0B1324))
+                        .border(1.dp, DolbyBorder, RoundedCornerShape(10.dp))
+                        .clickable { onOpenNotificationSettings() }
+                        .padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "前往系统通知设置（可关闭显示）",
+                        color = DolbyCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // 4. Info note about built-in post-fader volume matching
+            Text(
+                text = "音量自动拉平已内置生效：保留 v1.1.0 原厂全部音色与压缩，后级自动抵消 +4dB/+6dB 响度增益，直接按手机音量键即可。",
+                color = DolbyTextSecondary.copy(alpha = 0.85f),
+                fontSize = 10.5.sp
+            )
         }
     }
 }

@@ -336,7 +336,10 @@ class DolbyDspEngine(context: Context) {
                     }
                     dp.setMbcAllChannelsTo(mbc)
 
-                    // Stage C: Final transparent peak ceiling (-0.2 dBFS) catching sub-millisecond inter-band transients
+                    // Stage C: Final transparent peak ceiling (-0.2 dBFS) + exact post-processing level matching
+                    // Cancels Dolby's +4dB/+6dB volmax loudness jump strictly AFTER all 20-band EQ/MBC/Regulator
+                    // processing finishes, preserving 100% of v1.1.0 tone & resonance at stock phone volume steps.
+                    val postLevelMatchDb = -spec.volmaxBoostDb
                     val limiter = DynamicsProcessing.Limiter(
                         true,
                         true,
@@ -345,7 +348,7 @@ class DolbyDspEngine(context: Context) {
                         45.0f,
                         20.0f,
                         -0.2f,
-                        0.0f
+                        postLevelMatchDb
                     )
                     dp.setLimiterAllChannelsTo(limiter)
 
