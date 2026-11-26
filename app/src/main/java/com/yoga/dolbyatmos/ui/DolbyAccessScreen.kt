@@ -231,40 +231,46 @@ private fun HeaderSection(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "DOLBY ATMOS",
+                color = DolbyTextPrimary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.4.sp,
+                maxLines = 1,
+                softWrap = false
+            )
+            Spacer(modifier = Modifier.height(5.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(DolbyCyan.copy(alpha = 0.16f))
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            ) {
                 Text(
-                    text = "DOLBY ATMOS",
-                    color = DolbyTextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.6.sp
+                    text = "YOGA 83BU · 1:1原厂",
+                    color = DolbyCyan,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(DolbyCyan.copy(alpha = 0.16f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "YOGA 83BU · 1:1原厂",
-                        color = DolbyCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = if (state.masterEnabled) {
-                    "电脑 XML 参数零删改直通 · ${state.currentProfile.titleCn}模式"
+                    "原厂直通 · ${state.currentProfile.titleCn}模式"
                 } else {
-                    "音效引擎已关闭 · 系统原生直通输出"
+                    "音效引擎已关闭 · 原生直通"
                 },
                 color = if (state.masterEnabled) DolbyCyan else DolbyTextSecondary,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
+
+        Spacer(modifier = Modifier.width(12.dp))
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -363,8 +369,10 @@ private fun EndpointStatusCard(
                     Text(
                         text = "${state.effectiveEndpoint.labelCn} · ${state.endpointOverride.labelCn}",
                         color = DolbyTextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${state.connectedDeviceName} · ${state.attachedSessionSummary}",
@@ -376,11 +384,14 @@ private fun EndpointStatusCard(
                 }
             }
 
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = if (expanded) "收起" else "切换 ▾",
                 color = DolbyCyan,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
             )
         }
 
