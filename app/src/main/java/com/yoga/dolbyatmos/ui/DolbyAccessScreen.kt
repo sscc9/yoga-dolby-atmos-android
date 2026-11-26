@@ -909,51 +909,88 @@ private fun GraphicEqualizerCard(
         }
 
         if (isSpeakerOptLocked) {
-            // Style 1: Visible Grayed-Out & Touch-Locked 10-Band EQ showing 4K = -3.0, 8K = -3.0
+            // Frosted Glass Mask Overlay + Centered Large Lock Emblem directly over the 10-Band EQ
             Spacer(modifier = Modifier.height(12.dp))
-            Row(
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(Color(0xFF0C1020))
-                    .border(1.dp, Color(0xFF232A46), RoundedCornerShape(9.dp))
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF0B0F1E))
+                    .border(1.dp, Color(0xFF263052), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Lock,
-                    contentDescription = null,
-                    tint = Color(0xFF8FA0C9),
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "10 段均衡器已锁定（关闭上方开关可解锁调节）",
-                    color = Color(0xFF8FA0C9),
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                // Underlying 10-band EQ bars (4K = -3.0, 8K = -3.0 clearly visible beneath the mask)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 10.dp)
+                        .height(176.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    val lockedBands = YogaDolbyTuningData.SPEAKER_OPT_GEQ_10
+                    YogaDolbyTuningData.UI_GEQ_LABELS.forEachIndexed { idx, freqLabel ->
+                        val gain = lockedBands.getOrElse(idx) { 0f }
+                        VerticalEqBar(
+                            modifier = Modifier.weight(1f),
+                            gainDb = gain,
+                            freqLabel = freqLabel,
+                            locked = true,
+                            onGainChange = {}
+                        )
+                    }
+                }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(176.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                val lockedBands = YogaDolbyTuningData.SPEAKER_OPT_GEQ_10
-                YogaDolbyTuningData.UI_GEQ_LABELS.forEachIndexed { idx, freqLabel ->
-                    val gain = lockedBands.getOrElse(idx) { 0f }
-                    VerticalEqBar(
-                        modifier = Modifier.weight(1f),
-                        gainDb = gain,
-                        freqLabel = freqLabel,
-                        locked = true,
-                        onGainChange = {}
-                    )
+                // Semi-transparent protective scrim mask + prominent centered Lock shield
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFF080C1A).copy(alpha = 0.56f),
+                                    Color(0xFF090E1E).copy(alpha = 0.68f)
+                                )
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF131B34).copy(alpha = 0.95f))
+                                .border(1.5.dp, DolbyCyan.copy(alpha = 0.55f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Lock,
+                                contentDescription = "已锁定",
+                                tint = DolbyCyan.copy(alpha = 0.92f),
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0xFF10172D).copy(alpha = 0.92f))
+                                .border(1.dp, Color(0xFF2B3860), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "已锁定防误触 · 4K / 8K -3.0 dB",
+                                color = Color(0xFFD6E4FF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
                 }
             }
         } else {
